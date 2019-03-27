@@ -1,3 +1,3 @@
-# M215-Survival-Analysis-Fall2018
+# M215-Survival-Analysis (Fall2018)
 
-` Topic: Statistical methods for analysis of survival data. `
+> For UCLA BIOSTAT M215 (Survival Analysis), which covered statistical methods for analysis of survival data.
