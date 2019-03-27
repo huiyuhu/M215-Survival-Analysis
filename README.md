@@ -3,7 +3,7 @@
 > For UCLA BIOSTAT M215 (Survival Analysis), which covered statistical methods for analysis of survival data.
 > Textbook: SURVIVAL ANALYSIS Techniques for Censored and Truncated Data (Klein and Moeschberger )
 
-- Most of homework problems are based on the the textbook.
+- Most of homework problems are based on the the textbook (Klein and Moeschberger).
 
 ## Homework 2 - chapter 4
 * Fit and plot the Exponential model
