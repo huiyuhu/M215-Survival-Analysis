@@ -31,8 +31,8 @@
 * Cox-Snell residual plot
 * Anderson plots
 
-## Final Project
-* Dataset: Echocardiogram
+## Final Project 
+#### Survival analysis for Echocardiogram dataset
 * Objectives and approaches:
 1. Explore the distributions of the covariates and correlations between them
 2. Estimate survival function using appropriate variable selection
