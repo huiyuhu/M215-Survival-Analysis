@@ -1,0 +1,352 @@
+---
+title: "M215_HW6"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(survival) # loading survival functions into R
+library(KMsurv) # datasets from Klein and Moeschberger textbook
+help(btrial)
+```
+
+## 8.4
+a.
+```{r}
+help(hodg)
+data(hodg)
+hodg$Z1 <- ifelse(hodg$gtype == 1 & hodg$dtype == 2, 1, 0)
+hodg$Z2 <- ifelse(hodg$gtype == 2 & hodg$dtype == 1, 1, 0)
+hodg$Z3 <- ifelse(hodg$gtype == 2 & hodg$dtype == 2, 1, 0)
+fit <- coxph(Surv(time, delta) ~ Z1+Z2+Z3,ties = 'breslow', data = hodg)
+summary(fit)
+```
+
+b. 
+```{r}
+hodg$Z_1 <- ifelse(hodg$gtype == 2, 1, 0)
+hodg$Z_2<- ifelse(hodg$dtype == 2, 1, 0)
+hodg$Z12 <- hodg$Z_1 * hodg$Z_2
+fit1 <- coxph(Surv(time, delta) ~ Z_1+Z_2+Z12,ties = 'breslow', data = hodg)
+summary(fit1)
+```
+(c) Find point estimates and 95% confidence intervals for the relative risk of death for an NHL Auto transplant patient as compared to an NHL Allo transplant patient.
+
+**In the summary of the first model, the relative risk of death fro an NHL Auto transplant patients as compared to an NHL Allo transplant patient is the exponential coefficient of of Z2a which is 1.94 in this case with the 95% CI of (0.64,5.87).**
+
+(d) Find the p-value of a test of the hypothesis that the hazard rates are the same for HOD Allo transplants and NHL Allo patients, using the Wald test. Repeat a similar test for Auto patients.
+
+```{r}
+#Allo patient
+C <- c(1, 0, 0)
+b0 <- c(0, 0, 0)
+b <- fit.1$coefficients
+V <- fit.hodg$var
+chi_allo <- t(C %*% b - C %*% b0) %*% solve(t(C) %*% V %*% C) %*% (C %*% b - C %*% b0)
+pchisq(chi_allo, df=1, lower.tail = F)
+
+#Auto patient
+C <- c(0, 1, -1)
+b0 <- c(0, 0, 0)
+b <- fit.hodg$coefficients
+V <- fit.hodg$var
+chi_allo <- t(C %*% b - C %*% b0) %*% solve(t(C) %*% V %*% C) %*% (C %*% b - C %*% b0)
+pchisq(chi_allo, df=1, lower.tail = F)
+```
+
+(e) Test the hypothesis, using the Wald test, that the hazard rates for Auto transplant and Allo transplant patients are the same for each disease group against the alternative that the hazard rates for Auto transplant and Allo transplant patients for at least one group are dif- ferent using a two-degree of freedom test of H0 : h(t | NHL Allo) =􏰗 h(t |NHL Auto) and H0 : h(t |HOD Allo) =􏰗 h(t |HOD Auto)
+
+```{r}
+C <- rbind(c(0, 1, 0), c(1, 0, -1))
+b0 <- c(0, 0, 0)
+b <- fit.hodg$coefficients
+V <- fit.hodg$var
+chi_allo <- t(C %*% b - C %*% b0) %*% solve(C %*% V %*% t(C)) %*%
+(C %*% b - C %*% b0)
+pchisq(chi_allo, df=2, lower.tail = F)
+```
+
+
+
+## 8.10
+
+a)
+```{r}
+help(bmt)
+data(bmt)
+coxph(Surv(ta, da) ~ z10, data = bmt, ties = 'breslow')
+```
+b) 
+```{r}
+bmt$Z1 <- ifelse(bmt$group == 1, 1, 0)
+bmt$Z2 <- ifelse(bmt$group == 2, 1, 0)
+bmt$Z1_MTX <- bmt$Z1 * bmt$z10
+bmt$Z2_MTX <- bmt$Z2 * bmt$z10
+coxph(Surv(ta, da) ~ z10 + Z1 + Z2 + Z1_MTX + Z2_MTX, data = bmt, ties = 'breslow')
+
+```
+c) 
+
+d) 
+```{r}
+bmt$Q1 <- ifelse(bmt$group == 2, 1, 0)
+bmt$Q2 <- ifelse(bmt$group == 3, 1, 0)
+bmt$Q3 <- bmt$z7
+bmt$Q4 <- ifelse(bmt$z8 == 1, 1, 0)
+bmt$Q5 <- bmt$z10
+bmt$Q6 <- ifelse(bmt$z4 == 1, 1, 0) 
+bmt$Q7 <- ifelse(bmt$z3 == 1, 1, 0)
+bmt$Q8 <- bmt$Q6 * bmt$Q7
+bmt$Q9 <- ifelse(bmt$z6 == 1, 1, 0)
+bmt$Q10 <-ifelse(bmt$z5 == 1, 1, 0)
+bmt$Q11 <- bmt$Q9 * bmt$Q10
+bmt$Q12 <- bmt$z2 - 28
+bmt$Q13 <- bmt$z1 - 28
+bmt$Q14 <- bmt$Q12 * bmt$Q13
+
+initial.model <- coxph(Surv(ta, da) ~ Q5, data = bmt, ties = "breslow")
+
+library(MASS)
+stepAIC(initial.model, direction = "both", scope = list(upper = ~ Q1 + Q2 + Q3 +Q4+Q5+Q6+Q7+Q8+Q9+Q10+Q11+Q12+Q13+Q14, lower = ~ Q5))
+```
+
+## 8.14
+a) Estimate the survival functions of the time to AGVHD for the MTX and no MTX treatment groups discussed in Exercise 8.10, adjusted for disease category. Provide a separate estimate for each disease group.
+
+```{r}
+bmt$Z1 <- ifelse(bmt$group == 1, 1, 0)
+bmt$Z2 <- ifelse(bmt$group == 2, 1, 0)
+bmt$Z1_MTX <- bmt$Z1 * bmt$z10
+bmt$Z2_MTX <- bmt$Z2 * bmt$z10
+#according to 8.10, interaction effects are not sinificant 
+fit.bmt2 <- coxph(Surv(ta, da) ~ z10 + factor(group), data = bmt, ties = 'breslow')
+fit.bmt2
+
+b.haz <- basehaz(fit.bmt2, centered = F)
+t <- b.haz[ ,2]
+S.est <- cbind(exp(-b.haz[,1]), t)
+b.est <- fit.bmt2$coefficients
+S1_n<- S.est[,1]^(exp(t(b.est) %*% c(0, 0, 0))) # group 1 no MTX
+S2_n <- S.est[,1]^(exp(t(b.est) %*% c(1, 0, 0))) # group 2 no MTX
+S3_n <- S.est[,1]^(exp(t(b.est) %*% c(0, 1, 0))) # group 3 no MTX
+
+S1 <- S.est[,1]^(exp(t(b.est) %*% c(0, 0, 1))) # group 1 
+S2 <- S.est[,1]^(exp(t(b.est) %*% c(1, 0, 1))) # group 2
+S3 <- S.est[,1]^(exp(t(b.est) %*% c(0, 1, 1))) # group 3
+
+res <- cbind(S1_n, S2_n, S3_n, S1, S2, S3)
+colnames(res) <- c("ALL-no MTX", "AML low-no MTX", "AML high-no MTX",
+                   "ALL- MTX", "AML low- MTX", "AML high- MTX")
+res <- cbind(S1[max(which(t <= 80))], S2[max(which(t <= 80))],
+S3[max(which(t <= 80))], S4[max(which(t <= 80))])
+rownames(res) <- c('Est. Surv.')
+colnames(res) <- c('base', 'MTX', 'ALL', 'AML HIGH')
+round(res, 3)
+
+fit.s1 <- survfit(fit.bmt2, newdata = data.frame(group = 3, z10 = 0),
+se.fit = TRUE, conf.int = .95, conf.type = 'log-log')
+summary(fit.s1)
+
+fit.s2 <- survfit(fit.bmt2, newdata = data.frame(group = 3, z10 = 1),
+se.fit = TRUE, conf.int = .95, conf.type = 'log-log')
+summary(fit.s2)
+```
+
+
+
+
+## 9.1
+```{r}
+help("tongue")
+data(tongue)
+cut.points <- unique(tongue$time[tongue$delta == 1]) 
+tongue1 <- survSplit(data = tongue, cut = cut.points, end = "time", start = "t0", event = "delta")
+
+tongue1$X1 <- ifelse(tongue1$type == 2 , 1, 0)
+tongue1$X2 <- tongue1$X1 * log(tongue1$time)
+fit.tongue <- coxph(Surv(t0, time, delta) ~ X1 + X2, data = tongue1, ties = 'breslow')
+summary(fit.tongue)
+```
+
+
+## 9.3 
+
+```{r}
+time1 <- c(1, 63, 105, 129, 182, 216, 250, 262, 301, 301, 342, 354, 356, 358, 380, 383, 383, 388, 394, 408, 460, 489, 499, 523, 524, 535, 562, 569, 675, 676, 748, 778, 786, 797, 955, 968, 1000, 1245, 1271, 1420, 1551, 1694, 2363, 2754, 2950)
+
+delta1 <- rep(c(1, 0), times = c(43, 2))
+
+# group == 1 is chemotherapy only
+group1 <- rep(1, 45)
+
+
+time2 <- c(17, 42, 44, 48, 60, 72, 74, 95, 103, 108, 122, 144, 167, 170, 183, 185, 193, 195, 197, 208, 234, 235, 254, 307, 315, 401, 445, 464, 484, 528, 542, 547, 577, 580, 795, 855, 1366, 1577, 2060, 2412, 2486, 2796, 2802, 2934, 2988)
+
+
+delta2 <- rep(c(1, 0), times = c(39, 6))
+# group == 0 is chemotherapy plus radiotherapy
+group2 <- rep(0, 45)
+
+data <- cbind(c(time1, time2), c(delta1, delta2), c(group1, group2))
+colnames(data) <- c("time", "delta","group")
+
+data <- as.data.frame(data)
+```
+```{r}
+fit.ct <- coxph(Surv(time, delta) ~ group, data = data, ties = "breslow")
+
+summary(fit.ct)
+```
+
+```{r}
+cut.points_non <- unique(data$time[data$delta == 1]) 
+data1 <- survSplit(data = data, cut = cut.points_non, end = "time", start = "t0", event = "delta")
+data1$X1 <- data1$group * log(data1$time)
+fit.non <- coxph(Surv(t0, time, delta) ~ group + X1, data = data1, ties = 'breslow')
+summary(fit.non)
+```
+
+```{r}
+loglik <- as.numeric(length(cut.points_non))
+for(i in 1:length(cut.points_non)){
+data1$tdc1 <- ifelse(data1$time > cut.points_non[i], data1$group, 0)
+fit.tdc <- coxph(Surv(t0, time, delta) ~ group + tdc1, data = data1, ties = 'breslow')
+loglik[i] <- fit.tdc$loglik[2]
+}
+cbind(cut.points_non, loglik)
+opt_tau <- cut.points_non[which.max(loglik)]
+opt_tau
+```
+
+```{r}
+data1$Z2 <- ifelse(data1$time > opt_tau, data1$group, 0)
+data1$Z3 <- ifelse(data1$time <= opt_tau, data1$group, 0)
+fit.opt <- coxph(Surv(t0, time, delta) ~ Z2 + Z3, data = data1, ties = 'breslow')
+summary(fit.opt)
+```
+
+
+
+
+## 9.5
+```{r}
+data(larynx)
+help(larynx)
+#Create dummy variables for stage variable (s2, s3, s4)
+larynx$s2 <- ifelse(larynx$stage == 2, 1, 0)
+larynx$s3 <- ifelse(larynx$stage == 3, 1, 0)
+larynx$s4 <- ifelse(larynx$stage == 4, 1, 0)
+larynx$yr <- ifelse(larynx$diagyr < 75, 1, 0)
+
+cut.points <- unique(larynx$time[larynx$delta == 1]) 
+larynx1 <- survSplit(data = larynx, cut = cut.points, end = "time", start = "t0", event = "delta")
+# stratify based on year
+fit <- coxph(Surv(t0, time, delta) ~ s2+s3+s4+age+strata(yr), data = larynx1, ties = 'breslow')
+fit
+```
+
+b)
+```{r}
+larynx_yr0 <- larynx1[larynx1$yr == 0, ]
+larynx_yr1 <- larynx1[larynx1$yr == 1, ]
+fit0 <- coxph(Surv(t0, time, delta) ~ s2+s3+s4+age, data = larynx_yr0, ties = 'breslow')
+
+fit1 <- coxph(Surv(t0, time, delta) ~ s2+s3+s4+age, data = larynx_yr1, ties = 'breslow')
+
+#LR
+X2 <- -2*(fit$loglik[2] - (fit0$loglik[2] + fit1$loglik[2])); X2
+1 - pchisq(X2, 4)
+
+#WALT
+W1 <- (fit0$coefficients[1] - fit1$coefficients[1])^2 / (fit1$var[1,1] + fit0$var[1,1]); W1
+1 - pchisq(W1, 1) #p-value
+
+W2 <- (fit0$coefficients[2] - fit1$coefficients[2])^2 / (fit1$var[2,2] + fit0$var[2,2]); W2
+1 - pchisq(W2, 1) #p-value
+
+W3 <- (fit0$coefficients[3] - fit1$coefficients[3])^2 / (fit1$var[3,3] + fit0$var[3,3]); W3
+1 - pchisq(W3, 1) #p-value
+
+W4 <- (fit0$coefficients[4] - fit1$coefficients[4])^2 / (fit1$var[4,4] + fit0$var[4,4]); W4
+1 - pchisq(W4, 1) #p-value
+
+C <-rbind(c(1, 0, 0, 0), c(0, 1, 0, 0), c(0, 0, 1, 0), c(0, 0, 0, 1))
+b0 <-fit0$coefficients
+b1 <- fit1$coefficients
+V <- fit0$var + fit1$var
+wald <- t(b1 - b0) %*% solve(C %*% V %*% t(C)) %*% (b1 - b0)
+
+wald
+1- pchisq(wald, 4)
+
+```
+
+
+## 9.8
+
+```{r}
+help(burn)
+data(burn)
+
+cut.points <- unique(burn$T3[burn$D3 == 1])
+
+burn1 <- survSplit(data = burn, cut = cut.points, end = "T3", start = "t0", event = "D3")
+
+#Create time-dependent covariates
+burn1$co <- ifelse(burn1$T3 >= burn1$T1 & burn1$D1 == 1, 1, 0)
+
+fit <- coxph(Surv(t0, T3, D3) ~ co, data = burn1, ties = 'breslow')
+summary(fit)
+```
+
+
+b) 
+```{r}
+burn1$co1 <- ifelse(burn1$T3 >= burn1$T2 & burn1$D2 == 1, 1, 0)
+
+fit1 <- coxph(Surv(t0, T3, D3) ~ co1, data = burn1, ties = 'breslow')
+
+summary(fit1)
+```
+
+```{r}
+burn1$Z1_logt <- burn1$Z1 * log(burn1$T3)
+burn1$Z2_logt <- burn1$Z2 * log(burn1$T3)
+burn1$Z3_logt <- burn1$Z3 * log(burn1$T3)
+burn1$Z4_logt <- burn1$Z4 * log(burn1$T3)
+burn1$Z5_logt <- burn1$Z5 * log(burn1$T3)
+burn1$Z6_logt <- burn1$Z6 * log(burn1$T3)
+burn1$Z7_logt <- burn1$Z7 * log(burn1$T3)
+burn1$Z8_logt <- burn1$Z8 * log(burn1$T3)
+burn1$Z9_logt <- burn1$Z9 * log(burn1$T3)
+burn1$Z10_logt <- burn1$Z10 * log(burn1$T3)
+burn1$co_logt <- burn1$co * log(burn1$T3)
+burn1$co1_logt <- burn1$co1 * log(burn1$T3)
+burn1$Z11_1 <- ifelse(burn1$Z11 == 2, 1, 0)
+burn1$Z11_2 <- ifelse(burn1$Z11 == 3, 1, 0)
+burn1$Z11_3 <- ifelse(burn1$Z11 == 4, 1, 0)
+burn1$Z11_1_logt <- burn1$Z11_1 * log(burn1$T3)
+burn1$Z11_2_logt <- burn1$Z11_2 * log(burn1$T3)
+burn1$Z11_3_logt <- burn1$Z11_3 * log(burn1$T3)
+fit.burn_1 <- coxph(Surv(t0, T3, D3) ~  Z1+Z2+Z3+Z4+Z5+Z6+Z7+Z8+Z9+Z10+factor(Z11)+co+co1+Z9_logt, data = burn1, ties = 'breslow')
+summary(fit.burn_1)
+fit.burn_2 <- coxph(Surv(t0, T3, D3) ~  Z1+Z2+Z3+Z4+Z5+Z6+Z7+Z8+Z9+Z10+factor(Z11)+co+co1+Z11_1_logt, data = burn1, ties = 'breslow')
+summary(fit.burn_2)
+fit.burn_3 <- coxph(Surv(t0, T3, D3) ~  Z1+Z2+Z3+Z4+Z5+Z6+Z7+Z8+Z9+Z10+factor(Z11)+co+co1+Z11_3_logt, data = burn1, ties = 'breslow')
+summary(fit.burn_3)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

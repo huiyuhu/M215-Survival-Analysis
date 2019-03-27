@@ -1,0 +1,36 @@
+---
+title: "M215 hw"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(survival)
+#install.packages('survminer')
+#install.packages("KMsurv")
+library(KMsurv)
+
+# Import 6MP data
+data("drug6mp")
+
+# Fit the Exponential model
+model <- survfit(Surv(t2, relapse) ~ 1, data=drug6mp)
+
+summary(model)
+
+# Plot the fit between the model and the data
+plot(-log(model$surv) ~ model$time, type = 's', col = 'blue', 
+     main = "Fit Between Model and Data",
+     xlab = "t: Time",
+     ylab = "-log(S(t)): Cumultive Hazard Function")
+
+# Add the model line, lambda = 0.025
+lines(model$time, 0.025 * model$time, type = "b")
+```
+

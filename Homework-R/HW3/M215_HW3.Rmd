@@ -1,0 +1,382 @@
+---
+title: "M215_HW3"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(survival)
+library(KMsurv)
+data(bmt)
+help(bmt)
+```
+
+```{r}
+cut.points <- unique(bmt$t2[bmt$d3 == 1]) #What does this do?
+#Converting dataset
+
+bmt3 <- survSplit(data = bmt, cut = cut.points, end = "t2", start = "t0", event = "d3")
+bmt3$Z3 <- bmt3$z7
+bmt3$Z4 <- bmt3$z8
+bmt3$Z5 <- bmt3$z10
+bmt3$Z6 <- bmt3$z4
+bmt3$Z7 <- bmt3$z3
+bmt3$Z8 <- bmt3$Z6 * bmt3$Z7
+bmt3$Z9 <- bmt3$z6
+bmt3$Z10 <- bmt3$z5
+bmt3$Z11 <- bmt3$Z9 * bmt3$z10
+bmt3$Z12 <- bmt3$z2 - 28
+bmt3$Z13 <- bmt3$z1 - 28
+bmt3$Z14 <- bmt3$Z12 * bmt3$Z13
+bmt3$Z15 <- bmt3$z1 * log(bmt3$t2)
+bmt3$Z16 <- bmt3$z2 * log(bmt3$t2)
+bmt3$Z17 <- bmt3$Z3 * log(bmt3$t2)
+bmt3$Z18 <- bmt3$Z4 * log(bmt3$t2)
+bmt3$Z19 <- bmt3$z5 * log(bmt3$t2)
+bmt3$Z20 <- bmt3$Z6 * log(bmt3$t2)
+bmt3$Z21 <- bmt3$Z7 * log(bmt3$t2)
+bmt3$Z22 <- bmt3$Z8 * log(bmt3$t2)
+bmt3$Z23 <- bmt3$Z9 * log(bmt3$t2)
+bmt3$Z24 <- bmt3$Z10 * log(bmt3$t2)
+bmt3$Z25 <- bmt3$Z11 * log(bmt3$t2)
+bmt3$Z26 <- bmt3$Z12 * log(bmt3$t2)
+bmt3$Z27 <- bmt3$Z13 * log(bmt3$t2)
+bmt3$Z28 <- bmt3$Z14 * log(bmt3$t2)
+fit <- coxph(Surv(t0, t2, d3) ~ z1 + z2 + Z15 + Z16, data = bmt3, ties = 'breslow')
+
+#Perform Wald Test for proportional hazards w.r.t Group
+C <- c(0, 0, 1, -1)
+b0 <- c(0, 0, 0, 0)
+b <- fit$coefficients
+V <- fit$var
+1 - pchisq(t(C %*% b - C %*% b0) %*% solve(t(C) %*% V %*% C) %*% (C %*% b - C %*% b0), 2)
+#Testing proportional hazards for MTX
+coxph(Surv(t0, t2, d3) ~ z5 + Z19, data = bmt3, ties = 'breslow')
+```
+
+
+### Klein and Moeschberger 4.2 
+
+* Using the data reported in section 1.3, find the quantities specified below for the AML low risk and AML high risk groups. Note that most of these quantities are worked out in detail in Example 4.2 and its continuations for the ALL group.
+
+  a)  Estimate the survival functions and their standard errors for the AML low risk and AML high risk groups.
+
+```{r}
+# AML Low Risk
+fit.low <- survfit(Surv(bmt$t1[bmt$group == 2], bmt$d1[bmt$group == 2]) ~ 1, conf.type = 'none')
+summary(fit.low)
+```
+```{r}
+# AML High Risk
+fit.high <- survfit(Surv(bmt$t1[bmt$group == 3], bmt$d1[bmt$group == 3]) ~ 1, conf.type = 'none')
+summary(fit.high)
+```
+
+b) Estimate the cumulative hazard rates and their standard errors for the AML low risk and AML high risk groups.
+
+```{r}
+# Nelson-Aalen Estimate of H(t)
+
+# AML Low Risk
+h_low <- fit.low$n.event/fit.low$n.risk
+H.na_low <- cumsum(h_low) #Nelson-Aalen estimates
+s_low <- fit.low$n.event/fit.low$n.risk^2
+V.na_low <- cumsum(s_low) #Variance estimate for the N-A estimator
+NAest_low <- cbind(fit.low$time,H.na_low, sqrt(V.na_low))
+colnames(NAest_low) <- c("time","NAEst.","Std. Err")
+NAest_low <- as.data.frame(NAest_low)
+NAest_low
+```
+
+```{r}
+# AML High Risk
+h_high <- fit.high$n.event/fit.high$n.risk
+H.na_high <- cumsum(h_high) #Nelson-Aalen estimates
+s_high <- fit.high$n.event/fit.high$n.risk^2
+V.na_high <- cumsum(s_high) #Variance estimate for the N-A estimator
+NAest_high <- cbind(H.na_high, sqrt(V.na_high))
+colnames(NAest_high) <- c("NA-Est.","Std. Err")
+NAest_high
+```
+
+(d) Estimate the mean time to death and find 95% confidence intervals for the mean survival time for both the AML low risk and AML high risk groups.
+
+```{r}
+t_l <- 2569 #Looking at restricted mean from [0, 2569]
+print(fit.low, print.rmean = TRUE, rmean = t_l) #Low
+```
+* The estimated mean time to death is 1645 days. With the SE = 147, we get the 95% CI for mean survival time for AML low risk group is (1645-1.96 * 147, 1645+1.96*147) = (1357, 1933).
+
+```{r}
+t_h <- 2640
+print(fit.high, print.rmean = TRUE, rmean = t_h) #high
+```
+* The estimated mean time to deat is 834 days. With the SE = 155, we can get the 95% CI for mean survival time for AML high risk group is (834-1.96*155, 834+1.96*155) = (530, 1138).
+
+(e) Work out estimates of the median time to death and find 95% confidence intervals for the median survival time for both the AML low risk and AML high risk groups using the linear, log-transformed, and arcsine formulas.
+* Low Risk
+* Linear median time: 2204
+* Log median time:2204
+* Arcsine median time: 2204
+```{r}
+#Low risk
+data_directory <- "/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215"
+source('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/bc_median_ci.R')
+#linear
+bc.median.ci(fit.low, table = F)
+#log-transformed
+bc.median.ci(fit.low, type = "log", table = F)
+#arcsine
+bc.median.ci(fit.low, type = "asin", table = F)
+```
+* High Risk
+* Linear median time: 265
+* Log median time:265
+* Arcsine median time: 265
+```{r}
+#High risk
+data_directory <- "/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215"
+source('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/bc_median_ci.R')
+#linear
+bc.median.ci(fit.high, table = F)
+#log-transformed
+bc.median.ci(fit.high, type = "log", table = F)
+#arcsine
+bc.median.ci(fit.high, type = "asin", table = F)
+```
+
+
+(f) Find 95% confidence intervals for the survival functions at 300 days post-transplant for both the AML low risk and AML high risk groups using the log- and arcsine-transformed formulas.
+
+* Log-log 
+* Low Risk: S(300) = 0.833 [using time = 288 to estimate time = 300], C.I. = [0.704, 0.910]
+* High Risk: S(300) = 0.489 [using time = 268 to estimate time = 300], C.I. = [0.337, 0.624] 
+```{r}
+# log-log - Low 
+fit.low_log <- survfit(Surv(bmt$t1[bmt$group == 2], bmt$d1[bmt$group == 2]) ~ 1, conf.type = 'log-log')
+summary(fit.low_log)
+# log-log - High
+fit.high_log <- survfit(Surv(bmt$t1[bmt$group == 3], bmt$d1[bmt$group == 3]) ~ 1, conf.type = 'log-log')
+summary(fit.high_log)
+```
+* Arcsine
+Low Risk: S(300) = 0.833 [using time = 288 to estimate time = 300], C.I. = [0.723, 0.920]
+High Risk: S(300) = 0.489 [using time = 268 to estimate time = 300], C.I. = [0.345, 0.633]
+```{r}
+# Arcsine - Low
+source('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/arcsin_ci.R')
+fit.low <- survfit(Surv(bmt$t1[bmt$group == 2], bmt$d1[bmt$group == 2]) ~ 1, conf.type = 'none')
+res.low <- arcsin.ci(fit.low, alpha = 0.05)
+res.low
+# Arcsine - High
+fit.high <- survfit(Surv(bmt$t1[bmt$group == 3], bmt$d1[bmt$group == 3]) ~ 1, conf.type = 'none')
+res.high <- arcsin.ci(fit.high, alpha = 0.05)
+res.high
+```
+* Likelihood ratio method.
+Low Risk: S(300) C.I. = [0.72, 0.916]
+High Risk: S(300) C.I. = [0.347, 0.632]
+```{r}
+source('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/LRci.R')
+# LR - Low
+LRci.surv(fit.low, t = 300)[3]
+# LR - High
+LRci.surv(fit.high, t = 300)[3]
+```
+* Bootstrap method
+ - (use the bootstrap function by modifying the quatile_boots from GitHub)
+* Low risk: [0.741, 0.926]
+* High risk: [0.356, 0.644]
+```{r}
+source('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/quantile_boots_1.R')
+t1 <- bmt$t1[bmt$group == 2]
+d1 <- bmt$d1[bmt$group == 2]
+t2 <- bmt$t1[bmt$group == 3]
+d2 <- bmt$d1[bmt$group == 3]
+
+# Bootstrap - low 
+quantile_boots(t1, d1)
+# Bootstrp - high
+quantile_boots(t2, d2)
+
+```
+
+
+(g) Find 95% EP confidence bands for the survival functions over the range 100–400 days post-transplant for both the AML low risk and AML high risk groups using the linear, log-transformed, and arcsinetransformed formulas.
+
+```{r}
+source('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/conf_band.R')
+# Low
+cbands.region(fit.low, tL = 80, tU = 414)
+# aL = 0.1; aU = 0.2
+c_l <- 2.5602
+ep.band1 <- cbands.interval(fit.low, tL = 80, tU = 414, crit.value = c_l, type = "linear", method = "ep")
+ep.band2 <- cbands.interval(fit.low, tL = 80, tU = 414, crit.value = c_l, type = "log", method = "ep")
+ep.band3 <- cbands.interval(fit.low, tL = 80, tU = 414, crit.value = c_l, type = "asin", method = "ep")
+
+# High
+cbands.region(fit.high, tL = 97, tU = 467)
+# aL = 0.2; aU = 0.6
+c_h <- 2.7666
+ep.band10 <- cbands.interval(fit.high, tL = 97, tU = 467, crit.value = c_h, type = "linear", method = "ep")
+ep.band20 <- cbands.interval(fit.high, tL = 97, tU = 467, crit.value = c_h, type = "log", method = "ep")
+ep.band30 <- cbands.interval(fit.high, tL = 97, tU = 467, crit.value = c_h, type = "asin", method = "ep")
+```
+(h) Find 95% HW confidence bands for the survival functions over the range 100–400 days post-transplant for both the AML low risk and AML high risk groups using the linear, log-transformed, and arcsinetransformed formulas.
+```{r}
+source('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/conf_band.R')
+# Low
+c0_l <- 0.9247
+hw.band1 <- cbands.interval(fit.low, tL = 80, tU = 414, crit.value = c0_l, type = "linear", method = "hw")
+hw.band2 <- cbands.interval(fit.low, tL = 80, tU = 414, crit.value = c0_l, type = "log", method = "hw")
+hw.band3 <- cbands.interval(fit.low, tL = 80, tU = 414, crit.value = c0_l, type = "asin", method = "hw")
+# High
+c0_h <- 1.3191
+hw.band10 <- cbands.interval(fit.high, tL = 97, tU = 467, crit.value = c0_h, type = "linear", method = "hw")
+hw.band20 <- cbands.interval(fit.high, tL = 97, tU = 467, crit.value = c0_l, type = "log", method = "hw")
+hw.band30 <- cbands.interval(fit.high, tL = 97, tU = 467, crit.value = c0_l, type = "asin", method = "hw")
+```
+```{r}
+#Plotting them - low
+plot(fit.low, xlim = c(100, 400), ylim = c(0.4, 1), main="Kaplan-Meier Estimate with 95% confidence bands (Low)",
+xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band1$LL ~ ep.band1$t, lty = 4, col = "red", lwd = 1.5, type = 's')
+lines(ep.band1$UL ~ ep.band1$t, lty = 4, col = "red", lwd = 1.5, type = 's')
+lines(hw.band1$LL ~ hw.band1$t, lty = 5, col = "blue", lwd = 1.5, type = 's')
+lines(hw.band1$UL ~ hw.band1$t, lty = 5, col = "blue", lwd = 1.5, type = 's')
+legend("bottomleft", legend=
+c("K-M survival estimate",
+"Confidence Intervals",
+"H-W bands", "EP Bands"), lty=c(1, 2, 4,5),
+bty = "n", lwd = c(1, 1, 1.5, 1.5), cex = .7,
+col = c("black", "black", "red", "blue"))
+```
+```{r}
+#Plotting them - high
+plot(fit.high, xlim = c(100, 400), main="Kaplan-Meier Estimate with 95% confidence bands (High)",
+xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band10$LL ~ ep.band10$t, lty = 4, col = "red", lwd = 1.5, type = 's')
+lines(ep.band10$UL ~ ep.band10$t, lty = 4, col = "red", lwd = 1.5, type = 's')
+lines(hw.band10$LL ~ hw.band10$t, lty = 5, col = "blue", lwd = 1.5, type = 's')
+lines(hw.band10$UL ~ hw.band10$t, lty = 5, col = "blue", lwd = 1.5, type = 's')
+legend("bottomleft", legend=
+c("K-M survival estimate",
+"Confidence Intervals",
+"H-W bands", "EP Bands"), lty=c(1, 2, 4,5),
+bty = "n", lwd = c(1, 1, 1.5, 1.5), cex = .7,
+col = c("black", "black", "red", "blue"))
+```
+
+
+
+(i) Based on the results above and those discussed in Example 4.2 and its continuations, how do the survival experiences of the ALL, AML low risk, and AML high risk groups compare?
+* Based on the result above, low risk group has higher survival time. 
+
+### Klein and Moeschberger 4.7 
+Consider a hypothetical study of the mortality experience of diabetics. Thirty diabetic subjects are recruited at a clinic and followed until death or the end of the study. The subject’s age at entry into the study and their age at the end of study or death are given in the table below. Of interest is estimating the survival curve for a 60- or for a 70-year-old diabetic.
+```{r}
+library("tidyverse")
+data <- read.csv("/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/Ex47Data.csv", header = T)
+data1 <- as_data_frame(data)
+
+```
+
+(a) Since the diabetics needed to survive long enough from birth until the study began, the data is left truncated. Construct a table showing the number of subjects at risk, Y , as a function of age.
+
+```{r}
+summary(survfit(Surv(entry.age, exit.age, death.indicator, type = 'counting') ~ 1, data = data1))
+```
+
+(b) Estimate the conditional survival function for the age of death of a diabetic patient who has survived to age 60.
+```{r}
+fit_60 <- survfit(Surv(entry.age, exit.age, death.indicator,  type='counting') ~ 1,
+data = data, subset = (exit.age >= 60))
+summary(fit_60)
+```
+
+
+(c) Estimate the conditional survival function for the age of death of a diabetic patient who has survived to age 70.
+```{r}
+fit_70 <- survfit(Surv(entry.age, exit.age, death.indicator,  type='counting') ~ 1,
+data = data, subset = (exit.age > 70))
+summary(fit_70)
+```
+
+
+(d) Suppose an investigator incorrectly ignored the left truncation and simply treated the data as right censored. Repeat parts a–c.
+
+```{r}
+summary(survfit(Surv(exit.age, death.indicator, type = 'right') ~ 1, data = data1))
+```
+
+```{r}
+fit_60 <- survfit(Surv(exit.age, death.indicator,  type='right') ~ 1,
+data = data, subset = (exit.age > 60))
+summary(fit_60)
+```
+
+```{r}
+fit_70 <- survfit(Surv(exit.age, death.indicator,  type='right') ~ 1,
+data = data, subset = (exit.age > 70))
+summary(fit_70)
+```
+
+* Based on the calculation, I get the result showed as below (different with result above).
+Left Truncated:
+
+| Time | Y  | S(t|Alive at 60) | S(t|Alive at 70) |
+|------|----|------------------|------------------|
+| 58   | 2  | 1.0000           | 1.0000           |
+| 59   | 3  | 1.0000           | 1.0000           |
+| 60   | 5  | 0.8000           | 1.0000           |
+| 61   | 6  | 0.8000           | 1.0000           |
+| 62   | 9  | 0.7111           | 1.0000           |
+| 63   | 10 | 0.6400           | 1.0000           |
+| 64   | 10 | 0.6400           | 1.0000           |
+| 65   | 10 | 0.5120           | 0.8000           |
+| 66   | 10 | 0.4608           | 0.7200           |
+| 67   | 12 | 0.4608           | 0.7200           |
+| 68   | 13 | 0.3899           | 0.6092           |
+| 69   | 14 | 0.3342           | 0.5222           |
+| 70   | 13 | 0.2828           | 0.4419           |
+| 71   | 12 | 0.2357           | 0.3682           |
+| 72   | 12 | 0.1964           | 0.3068           |
+| 73   | 11 | 0.1785           | 0.2790           |
+| 74   | 9  | 0.1587           | 0.2480           |
+| 76   | 7  | 0.1360           | 0.2125           |
+| 77   | 5  | 0.1088           | 0.1700           |
+| 78   | 4  | 0.1088           | 0.1700           |
+| 79   | 3  | 0.1088           | 0.1700           |
+| 80   | 1  | 0.1088           | 0.1700           |
+
+
+No Truncation:
+
+| Time | Y  | S(t|Alive at 60) | S(t|Alive at 70) |
+|------|----|------------------|------------------|
+| 58   | 30 | 1.0000           | 1.0000           |
+| 59   | 30 | 1.0000           | 1.0000           |
+| 60   | 30 | 0.9667           | 1.0000           |
+| 61   | 30 | 0.9667           | 1.0000           |
+| 62   | 29 | 0.9333           | 1.0000           |
+| 63   | 28 | 0.9000           | 1.0000           |
+| 64   | 28 | 0.9000           | 1.0000           |
+| 65   | 27 | 0.8333           | 0.9259           |
+| 66   | 25 | 0.8000           | 0.8889           |
+| 67   | 25 | 0.8000           | 0.8889           |
+| 68   | 24 | 0.7333           | 0.8148           |
+| 69   | 22 | 0.6667           | 0.7407           |
+| 70   | 18 | 0.5926           | 0.6584           |
+| 71   | 16 | 0.5185           | 0.5761           |
+| 72   | 14 | 0.4444           | 0.4938           |
+| 73   | 11 | 0.4040           | 0.4489           |
+| 74   | 9  | 0.3591           | 0.3991           |
+| 76   | 7  | 0.3078           | 0.3420           |
+| 77   | 5  | 0.2463           | 0.2736           |
+| 78   | 4  | 0.2463           | 0.2736           |
+| 79   | 3  | 0.2463           | 0.2736           |
+| 80   | 1  | 0.2463           | 0.2736           |
+

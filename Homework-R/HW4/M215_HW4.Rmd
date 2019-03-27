@@ -1,0 +1,81 @@
+---
+title: "M215_HW4"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages(survival)
+#install.packages(KMsurv)
+#install.packages(survMisc)
+#install.packages(controlTest)
+library(survival) # loading survival functions into R
+library(KMsurv) # datasets from Klein and Moeschberger textbook
+```
+
+## Klein and Moeschberger 7.2
+
+In Exercise 5 of Chapter 6, the survival experience of patients given an autologous transplant was compared to a postulated exponential survival rate with a hazard rate of 0.045. Using the data in Table 1.4 of Chapter 1, test the hypothesis that the hazard rate of these auto transplant patients is equal to 0.045 against the alternative that it is
+larger than 0.045 using the one-sample, log-rank test. Repeat this test using a weight function which gives heavier weight to departures early in time from this hazard rate.
+
+```{r}
+data(alloauto) # data from section 1.9
+help("alloauto")
+
+timevar <- alloauto$time[alloauto$type == 2] # type:2=autologous
+delta <- alloauto$delta[alloauto$type == 2]
+
+null_surv <- exp(-0.045 * timevar) #Expected survival probability
+
+survdiff(Surv(timevar, delta) ~ offset(null_surv))
+#rm(timevar, delta, null_surv)
+```
+```{r}
+survdiff(Surv(timevar, delta) ~ offset(null_surv), rho=2) # rho=2 should weight earlier heavier
+```
+## Klein and Moeschberger 7.3
+
+Consider the data reported in section 1.6 on the times until staphylococcus infection of burn patients (see our web page).
+
+(a) Using the log-rank test, test the hypothesis of no difference in the rate of staphylococcus infection between patients whose burns were cared for with a routine bathing care method versus those whose body cleansing was initially performed using 4% chlorhexidine gluconate. Use a two-sided test and a 0.05 significance level.
+
+```{r}
+data(burn)
+help(burn)
+survdiff(Surv(T3,D3)~Z1,data=burn)
+```
+(b) Repeat the test using Gehan’s test.
+(c)Repeat the test using the Tarone and Ware weights.
+```{r}
+library(survMisc)
+fit <- ten(Surv(T3,D3)~Z1,data=burn) 
+comp(fit)
+```
+* From top to bottom we have the test statistics, Q, and the p-values, pNorm for the log-rank, Gehan-Breslow,
+Tarone-Ware, Peto-Peto, modified Peto-Peto, and Fleming-Harrington weights.
+
+
+## Klein and Moeschberger 7.4
+
+In section 1.11, data from a study of the effect of ploidy on survival for patients with tumors of the tongue was reported.
+
+(a) Test the hypothesis that the survival rates of patients with cancer of the tongue are the same for patients with aneuploid and diploid tumors using the log-rank test.
+```{r}
+data(tongue)
+help(tongue)
+survdiff(formula = Surv(time, delta) ~ type, data = tongue)
+```
+
+(b) If primary interest is in detecting differences in survival rates between the two types of cancers which occur soon after the diagnosis of the cancer, repeat part a using a more appropriate test statistic.
+```{r}
+survdiff(formula = Surv(time, delta) ~ type, data = tongue, rho = 1)
+# rho = 1 it is equivalent to the Peto & Peto modification of the Gehan-Wilcoxon test.
+```
+
+
+

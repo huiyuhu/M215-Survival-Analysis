@@ -1,0 +1,597 @@
+---
+title: "M215_Proj_Draft"
+output: html_document
+---
+
+#### Name:Ziyan Song, Ke Zhao, Huiyu Hu
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(tidyverse)
+library(survival)
+```
+
+1. Read in data
+```{r}
+col.name <- c('survival', 'alive', 'ha.age', 'pe', 'fs', 'epss', 'lvdd', 'wm.score', 'wm.index', 
+              'mult', 'name', 'group', 'alive.1yr')
+col.type <- cols(col_double(), col_integer(), col_double(), col_integer(), col_double(), 
+                 col_double(), col_double(), col_double(), 
+                 col_double(), col_double(), col_character(), col_integer(), col_integer())
+# Raw data
+ec.data <- read_delim('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/M215_Project/echocardiogram.data', 
+                      delim = ',', col_names = col.name, col_types = col.type)
+
+# delete useless columns
+#ec.data <- ec.data %>% select(-one_of('name', 'group', 'mult'))
+ec.data <- ec.data[,-c(6,8,10,11,12,13)]
+ec.data <- ec.data %>% mutate(death = ifelse(alive == 1, 0, 1))
+# delete pc incorrect data
+ec.data <- ec.data %>% filter(pe == 0 | pe == 1)
+head(ec.data)
+
+```
+
+2. Statistic analysis
+
+#### Censored data and missing data
+```{r}
+# percentage of the censored data
+ec.data %>% group_by(alive) %>% 
+  summarise(n = n()) %>% 
+  mutate(freq = n / sum(n))
+# censored data: 32.6%, so this dataset is good to use
+
+# count how many missing for variables in each alive group
+ec.data %>% group_by(alive) %>% summarise_all(funs(sum(is.na(.))))
+
+ec.data %>% group_by(alive) %>% summarise(mean_age = mean(survival, na.rm = T))
+```
+
+#### Correlation
+
+```{r}
+# Data Exploration and Visualization
+cor(ec.data, use="pairwise.complete.obs")
+```
+
+#### Data Exploration and Visualization
+
+* Age
+```{r}
+# Age histogram
+ec.data %>% filter(!is.na(ha.age)) %>%
+  ggplot(aes(x=ha.age)) + 
+  geom_histogram(color="darkblue", fill="lightblue") + 
+  labs(title="Age histogram plot",x="Age (yr)", y = "N") + 
+  theme_classic()
+# Almost all patients are older than  40. Majority are from 55 to 70
+
+
+```
+
+* Fractional-shortening
+
+```{r}
+# fractional-shortening
+ec.data %>% filter(!is.na(fs)) %>%
+  ggplot(aes(x=fs)) + 
+  geom_histogram(color="darkgreen", fill="lightgreen") + 
+  labs(title="FS histogram plot",x='Fractional shortening', y = "N") + 
+  theme_classic()
+# Normal range is 25-45%, Mild is 20-25%, Moderate is 15-20%, and Severe is <15%
+# Convert the FS to categorical variable 1:normal, 0:abnormal
+ec.data <- ec.data %>% mutate(fs.cat = ifelse(fs > 0.25, 1, 0))
+
+ec.data <- ec.data %>% mutate(fs.cat.2 = case_when(fs <= 0.25  ~ 'Abnormal',
+                                      fs > 0.25 ~ 'Nomal'))
+
+```
+
+* Left ventricular wall motion score index: The shortening fraction reflects the left ventricle systolic function
+
+```{r}
+# Left ventricular wall motion score index (WMSI), defined as the average wall motion score of 17 myocardial segments (1 = normal, 2 = hypokinetic, 3 = akinetic, 4 = dyskinetic scored for each segment) was assessed at all 3 stages of stress.
+
+ec.data %>% filter(!is.na(wm.index)) %>%
+  ggplot(aes(x=wm.index)) + 
+  geom_histogram(color="orange", fill="yellow") + 
+  labs(title="WMSI histogram plot",x='WMSI', y = "N") + 
+  theme_classic()
+
+ec.data <- ec.data %>% mutate(wmsi = ifelse(wm.index <= 1.25, 1, 0))
+# 1: normal, 0: hypokinetic, akinetic
+
+
+```
+
+* left ventricular end-diastolic dimension. This is a measure of the size of the heart at end-diastole.
+
+```{r}
+ec.data %>% filter(!is.na(lvdd)) %>%
+  ggplot(aes(x=lvdd)) + 
+  geom_histogram(color="darkred", fill="lightpink") + 
+  labs(title="LVDD histogram plot",x='LVDD (in cm)', y = "N") + 
+  theme_classic()
+
+ec.data <- ec.data %>% mutate(lvdd.cat = ifelse(lvdd<= 5.0, 1, 0))
+
+
+
+
+```
+
+
+3. Fit model 
+
+### a) Non-parametric methods
+
+#### Kaplan-Meier estimator 
+
+* For survival data one commonly wants to find an estimate of the survival function S(t). The standard estimator of S(t) is the Kaplan-Meier estimator.  Kaplan-Meier estimator is nonparametric, which requires no parametric assumptions. 
+
+```{r}
+fit.km <- survfit(Surv(survival, death) ~ 1, data = ec.data)
+summary(fit.km)
+
+# Plotting the Kaplan-Meier Estimates
+plot(fit.km, main = 'Product-Limit Survival Estimates',
+ylab = 'KM Estimator without Covariates', xlab = 'Time (in Month)')
+
+# Plotting -log[S(t)] vs. t
+plot(-log(fit.km$surv) ~ fit.km$time, type = 's', col = 'blue', 
+     main = 'Estimated Cumulative Hazard Function', ylab = 'H(t) = -log[S(t)]',
+     xlab = 'Time (in Month)')
+
+
+```
+* The median is **29**.
+
+#### Nelson-Aalen Estimator
+
+```{r}
+H.km <- -log(fit.km$surv) 
+#Nelson-Aalen Estimate of H(t):
+h <- fit.km$n.event/fit.km$n.risk
+H.na <- cumsum(h) #Nelson-Aalen estimates
+s <- fit.km$n.event/fit.km$n.risk^2
+V.na <- cumsum(s) #Variance estimate for the N-A estimator
+NAest <- cbind(H.na, sqrt(V.na))
+colnames(NAest) <- c("NA-Est.","Std. Err")
+
+#Plot of the Nelson-Aalen Estimate
+plot(H.na ~ fit.km$time, type = 's', 
+     main="Plot of Nelson-Aalen Estimates", xlab="Time (t)",
+     ylab="Estimated Cum. Hazard Function", col = "red")
+lines(-log(fit.km$surv) ~ fit.km$time, type = "s", lty = 2, col = "blue")
+legend("topleft", c( "Nelson-Aalen","Kaplan-Meier"), lty = 1:2,
+col = c("red", "blue"), bty = "n", cex = .9)
+
+# plot(-log(fit.km$surv) ~ fit.km$time, type = 's', col = 'blue', 
+#      main = 'Estimated Cumulative Hazard Function', ylab = 'H(t) = -log[S(t)]',
+#      xlab = 'Time (in Month)')
+```
+
+#### Comparing the Nelson-Aalen Estimate to the Kaplan-Meier Estimate
+```{r}
+plot(H.km~fit.km$time, xlab = "time", ylab = " Estimated Cumulative Hazard Function", 
+     main = "Different H(t) Estimates (Non-parametric)", type = "s", col = "red")
+lines(H.na~fit.km$time, type = "s", lty = 2, col = "blue")
+legend("bottomright", c("Kaplan-Meier", "Nelson-Aalen"), lty = 1:2,
+col = c("red", "blue"), bty = "n", cex = .9)
+```
+
+#### Stratified Analyses
+
+- Create stratified Kaplan-Meier curves by groups
+
+- Stratify on pericardial-effusion
+
+```{r}
+# pericardial-effusion
+# summarize the frequency
+ec.data %>% group_by(pe) %>%
+  summarise(n = n()) %>% 
+  mutate(freq = n / sum(n))
+# Only 18.3% of patient whose pericardial effusion is fluid around the heart
+
+fit.km1 <- survfit(Surv(survival, death) ~ pe, data = ec.data)
+plot(fit.km1, col = c('red', 'blue'), lty = c(1, 2), ylab = 'Estimated Disease-Free Survival', 
+     xlab = 'Time', main = 'Kaplan-Meier Estimates by pericardial-effusion')
+legend("topright", c("no fluid", "fluid"), lty = 1:2, 
+       col = c("red", "blue"), bty = "n", cex = .9)
+
+# Log-rank test
+#Log-Rank Test (W = 1)
+survdiff(Surv(survival, death) ~ pe, data = ec.data, rho = 0)
+
+survdiff(Surv(survival, death) ~ fs.cat + wmsi + strata(pe), data = ec.data)
+```
+
+- Stratify on fractional-shortening
+
+```{r}
+ec.data %>% group_by(fs.cat) %>%
+  summarise(n = n()) %>% 
+  mutate(freq = n / sum(n))
+# Normal range is 25-45%
+fit.km1 <- survfit(Surv(survival, death) ~ fs.cat, data = ec.data)
+plot(fit.km1, col = c('red', 'blue'), lty = c(1, 2), 
+     ylab = 'Estimated Disease-Free Survival', xlab = 'Time', 
+     main = 'Kaplan-Meier Estimates by Fractional-Shortening')
+legend("topright", c("Abnormal (less than 25%)", "Normal (25-45%)"), lty = 1:2, 
+       col = c("red", "blue"), bty = "n", cex = .9)
+
+#Log-Rank Test (W = 1)
+survdiff(Surv(survival, death) ~ fs.cat, data = ec.data, rho = 0)
+
+survdiff(Surv(survival, death) ~ strata(fs.cat) + wmsi + pe, data = ec.data)
+
+```
+
+- Stratify on wmsi
+
+```{r}
+ec.data %>% group_by(wmsi) %>%
+  summarise(n = n()) %>% 
+  mutate(freq = n / sum(n))
+# 1: normal, 0: hypokinetic, akinetic
+
+fit.km1 <- survfit(Surv(survival, death) ~ wmsi, data = ec.data)
+plot(fit.km1, col = c('red', 'blue'), lty = c(1, 2), 
+     ylab = 'Estimated Disease-Free Survival', xlab = 'Time', 
+     main = 'Kaplan-Meier Estimates by WMSI')
+legend("topright", c("Hypokinetic & Akinetic", "Normal"), lty = 1:2, 
+       col = c("red", "blue"), bty = "n", cex = .9)
+#Log-Rank Test (W = 1)
+survdiff(Surv(survival, death) ~ wmsi, data = ec.data, rho = 1)
+
+survdiff(Surv(survival, death) ~ fs.cat + strata(wmsi) + pe, data = ec.data)
+
+```
+
+#### Left-Truncated Right-Censored Survival Data
+
+```{r}
+# Transfer the survival time to the age
+# ec.data.1 <- ec.data %>% mutate(age = ha.age + round(survival/12)) %>% 
+#   filter(age > ha.age)
+ec.data <- ec.data %>% mutate(age = ha.age * 12 + survival)
+ec.data$age
+#fit model
+fit.ltrc <- survfit(Surv((ha.age*12), age, death, type = 'counting') ~ 1, data = ec.data)
+
+# Here is a graphical summary of the number of subjects at risk as a function of age (in months).
+plot(fit.ltrc$n.risk ~ fit.ltrc$time, type = 'l', lty = 2, col = 'red', 
+     main = "Number at Risk as a Function of Age",
+     ylab = "Number at Risk", xlab = "Age (Months)", 
+     xlim=c(40*12, 1000))
+
+# Condition on living past 55 and 68 years
+fit.ltrc1 <- survfit(Surv((ha.age*12), age, death, type = 'counting') ~ 1, data = ec.data, 
+                     subset = (ha.age >= 55 ))
+fit.ltrc2 <- survfit(Surv((ha.age*12), age, death, type = 'counting') ~ 1, data = ec.data, 
+                     subset = (ha.age >= 68 ))
+plot(fit.ltrc1$time/12, fit.ltrc1$surv, type = 's', col = 'blue', 
+     main = 'Estimated Conditional Survival Functions',
+     ylab = 'Estimated Conditional Survival Prob.e', xlab = 'Age (Years)')
+lines(fit.ltrc2$time / 12, fit.ltrc2$surv, type = 's', col = 'red')
+```
+
+
+### b) Fitting a Parametric Survival Regression Model
+```{r}
+#Fitting an intercept-only model (ie. No covariates)
+fit.exp <- survreg(Surv(ec.data$survival, ec.data$death) ~ 1, dist = "exponential")
+fit.wei <- survreg(Surv(ec.data$survival, ec.data$death) ~ 1, dist = "weibull")
+#Results:
+summary(fit.exp); summary(fit.wei)
+
+
+
+# Adding Covariates
+fit.exp1 <- survreg(Surv(ec.data$survival, ec.data$death) ~ ha.age + factor(lvdd.cat) + factor(fs.cat), data = ec.data, dist = "exponential")
+summary(fit.exp1)
+# NOT significant
+
+# loglogistic
+fit.log <- survreg(Surv(ec.data$survival, ec.data$death) ~ ha.age + factor(lvdd.cat) + factor(fs.cat), data = ec.data, dist = "loglogistic")
+summary(fit.log)
+```
+
+### c) Cox’s Proportional Hazards Model
+
+```{r}
+
+fit <- coxph(Surv(survival, death) ~ ha.age + factor(pe) + factor(wmsi) + factor(fs.cat), data = ec.data,
+             method='breslow', na.action = na.exclude)
+summary(fit)
+
+mg.residual <- resid(fit, type = "martingale")
+
+plot(mg.residual ~ ec.data$ha.age, 
+     xlab = "AGE", ylab = "Martingale Residuals",
+     main='Martingale Residuals vs. AGE', pch = 19)
+#lines(lowess(ec.data$ha.age, mg.residual, delta = 0.5), col = 'red')
+```
+### Baseline Hazard and Estimation of Survival Function
+
+```{r}
+b.haz <- basehaz(fit, centered = F)
+t <- b.haz[ ,2]
+S.est <- cbind(exp(-b.haz[,1]), t)
+
+
+### Plot fractional-shortening at 65 yr old
+b.est <- fit$coefficients
+S0 <- S.est[,1]^(exp(t(b.est) %*% c(65, 0, 0, 0)))
+S1 <- S.est[,1]^(exp(t(b.est) %*% c(65, 0, 0, 1)))
+
+plot(S0 ~ t, type = 's', xlim = c(0, 60), ylim = c(0, 1), 
+     main = 'Est. Survival Functions For a 65 Year Old \n Compare fractional-shortening', 
+     ylab = 'Est. Survival Function', xlab = 'Time')
+lines(S1 ~ t, type = 's', lty = 2, col = 2)
+legend('bottomleft', 
+       c('Abnormal Contracility Age 65', 'Normal Contracility Age 65'),
+       col = 1:2, lty = 1:2, bty = 'n', cex = .85)
+
+
+### wmsi at 65 yr old
+b.est <- fit$coefficients
+S2 <- S.est[,1]^(exp(t(b.est) %*% c(65, 0, 0, 0)))
+S3 <- S.est[,1]^(exp(t(b.est) %*% c(65, 0, 1, 0)))
+
+plot(S2 ~ t, type = 's', xlim = c(0, 60), ylim = c(0, 1), 
+     main = 'Est. Survival Functions For a 65 Year Old \n Compare wmsi', 
+     ylab = 'Est. Survival Function', xlab = 'Time')
+lines(S3 ~ t, type = 's', lty = 2, col = 2)
+legend('bottomleft', 
+       c('Abnormal Motion Age 65', 'Normal Motion Age 65'),
+       col = 1:2, lty = 1:2, bty = 'n', cex = .85)
+
+# 1-year survival probability
+res1 <- cbind(S0[max(which(t <= 12))], S1[max(which(t <= 12))])
+rownames(res1) <- c('Est. Surv.')
+colnames(res1) <- c('Abnormal Conreacility', 'Normal Conreacility')
+round(res1, 3)
+# 3-year survival probability
+res3 <- cbind(S0[max(which(t <= 36))], S1[max(which(t <= 36))])
+rownames(res3) <- c('Est. Surv.')
+colnames(res3) <- c('Abnormal Conreacility', 'Normal Conreacility')
+round(res3, 3)
+```
+
+### Time-Dependent Covariates (Section 9.2)
+
+```{r}
+ec.data
+cut.points <- unique(ec.data$survival[ec.data$death == 1]) #What does this do?
+#Converting dataset
+ec.data1 <- survSplit(data = ec.data, cut = cut.points, end = "survival", start = "t0", event = "death")
+head(ec.data1)
+
+#Create time-dependent covariates
+ec.data1$X1 <- ec.data1$pe * log(ec.data1$survival)
+ec.data1$X2 <- ec.data1$fs.cat * log(ec.data1$survival)
+ec.data1$X3 <- ec.data1$lvdd.cat * log(ec.data1$survival)
+ec.data1$X4 <- ec.data1$wmsi * log(ec.data1$survival)
+
+fit.depX1 <- coxph(Surv(t0, survival, death) ~ pe + X1, data = ec.data1, ties = 'breslow')
+fit.depX2 <- coxph(Surv(t0, survival, death) ~ fs.cat + X2, data = ec.data1, ties = 'breslow')
+fit.depX3 <- coxph(Surv(t0, survival, death) ~ lvdd.cat + X3, data = ec.data1, ties = 'breslow')
+fit.depX4 <- coxph(Surv(t0, survival, death) ~ wmsi + X4, data = ec.data1, ties = 'breslow')
+
+fit.ass <- coxph(Surv(t0, survival, death) ~ pe + X1 + fs.cat + X2 + lvdd.cat + X3 + wmsi + X4, data = ec.data1, ties = 'breslow')
+
+```
+
+### Stratified Cox Model
+
+```{r}
+# Stratified on PE
+fit.pe <- coxph(Surv(t0, survival, death) ~  strata(pe) + ha.age + factor(wmsi) + factor(fs.cat), 
+                 data = ec.data1, ties = 'breslow')
+
+ec.pe0 <- ec.data1[ec.data1$pe == 0, ]
+ec.pe1 <- ec.data1[ec.data1$pe == 1, ]
+
+fit0 <- coxph(Surv(t0, survival, death) ~  ha.age + factor(wmsi) + factor(fs.cat),
+              data = ec.pe0, ties = 'breslow')
+fit1 <- coxph(Surv(t0, survival, death) ~  ha.age + factor(wmsi) + factor(fs.cat),
+              data = ec.pe1, ties = 'breslow')
+X2 <- -2*(fit.pe$loglik[2] - (fit0$loglik[2] + fit1$loglik[2])); X2
+1 - pchisq(X2, 3) #3 degrees of freedom for each covariate
+
+#W <- (fit0$coefficients[1] - fit1$coefficients[1])^2 / (fit0$var[1,1] + fit1$var[1,1]); W
+#1 - pchisq(W, 1) #p-value
+
+
+# Stratified on wmsi
+fit.wmsi <- coxph(Surv(t0, survival, death) ~  strata(pe) + ha.age + factor(wmsi) + factor(fs.cat), 
+                 data = ec.data1, ties = 'breslow')
+
+ec.wmsi0 <- ec.data1[ec.data1$wmsi == 0, ]
+ec.wmsi1 <- ec.data1[ec.data1$wmsi == 1, ]
+
+fit0 <- coxph(Surv(t0, survival, death) ~  ha.age + factor(pe) + factor(fs.cat),
+              data = ec.wmsi0, ties = 'breslow')
+fit1 <- coxph(Surv(t0, survival, death) ~  ha.age + factor(pe) + factor(fs.cat),
+              data = ec.wmsi1, ties = 'breslow')
+X2 <- -2*(fit.wmsi$loglik[2] - (fit0$loglik[2] + fit1$loglik[2])); X2
+
+1 - pchisq(X2, 3) #3 degrees of freedom for each covariate
+
+
+# Stratified on fs
+fit.fs <- coxph(Surv(t0, survival, death) ~  factor(pe) + ha.age + factor(wmsi) + strata(fs.cat), 
+                 data = ec.data1, ties = 'breslow')
+
+ec.fs0 <- ec.data1[ec.data1$fs.cat == 0, ]
+ec.fs1 <- ec.data1[ec.data1$fs.cat == 1, ]
+
+fit0 <- coxph(Surv(t0, survival, death) ~  factor(pe) + ha.age + factor(wmsi),
+              data = ec.fs0, ties = 'breslow')
+fit1 <- coxph(Surv(t0, survival, death) ~  factor(pe) + ha.age + factor(wmsi),
+              data = ec.fs1, ties = 'breslow')
+X2 <- -2*(fit.fs$loglik[2] - (fit0$loglik[2] + fit1$loglik[2])); X2
+
+1 - pchisq(X2, 3) #3 degrees of freedom for each covariate
+
+```
+
+### d) Graphical Methods to Assess Model Fit for Cox Models
+
+1.  Cox-Snell Residuals
+
+```{r}
+#Fit the model
+fit <- coxph(Surv(survival, death) ~ ha.age + factor(pe) + factor(wmsi) + factor(fs.cat), data = ec.data,
+             method='breslow', na.action = na.exclude)
+summary(fit)
+
+#Get Cox-Snell residual based on Martingale residuals
+mg.residual <- resid(fit, type = "martingale")
+cs.residual <- ec.data$death - mg.residual
+#Graphical Plot
+fit.cs <- survfit(Surv(cs.residual, ec.data$death) ~ 1) #Get Kaplan-Meier estiamtes
+H.cs <- cumsum(fit.cs$n.event/fit.cs$n.risk)
+plot(fit.cs$time, H.cs, type='s', col='blue', main = 'Cox-Snell Residual Plot')
+abline(0, 1, col='red', lty=2)
+
+```
+* If the Cox model that we fit was appropriate, then the plot should follow a 45 line. Looking at the plot
+above, the model does not fit too badly.
+
+2. Martingale Residuals
+
+```{r}
+fit <- coxph(Surv(survival, death) ~ ha.age + factor(pe) + factor(wmsi) + factor(fs.cat), data = ec.data,
+             method='breslow', na.action = na.exclude)
+mg.resid <- resid(fit, type = 'martingale') #Default is Martingale
+plot(mg.resid ~ ec.data$ha.age, 
+     xlab = "age in years when heart attack occurred ", ylab = "Martingale Residuals",
+     main='Martingale Residuals vs. Age', pch = 19)
+lines(lowess(ec.data$ha.age, mg.resid, delta = 7), col = 'red')
+```
+
+* This is suggestive of ** coding age as an indicator variable **.
+
+3. Graphical Check for Proportional Hazards
+
+* The first method is to stratify on the covariate of interest and plot the log estimated baseline cumulative hazard rates for each strata against time. If the proportionality assumption holds, then the plots should be close to parallel for each strata.
+
+
+### Parametric Regression Models
+
+```{r}
+# Weibull Regression Model
+fit.wb <- survreg(Surv(survival, death) ~ ha.age + factor(pe) + factor(wmsi) + factor(fs.cat),
+                  data = ec.data, dist = "weibull")
+summary(fit.wb) #Log-linear Representation
+# Fit very well, significant
+
+# Log-Logistic Distribution
+fit.ll <- survreg(Surv(survival, death) ~ ha.age + factor(pe) + factor(wmsi) + factor(fs.cat), 
+                  data = ec.data, dist = "loglogistic")
+summary(fit.ll)
+# NOT significant 
+```
+
+
+```{r}
+source('/Users/huiyuhu/Desktop/Study/UCLA_Biostat/M215/getWeibullEstimates.R')
+
+# Weibull Regression Model
+fit.wb <- survreg(Surv(survival, death) ~ ha.age + pe + fs.cat + lvdd.cat + wmsi,
+                  data = ec.data, dist = "weibull")
+summary(fit.wb) #Log-linear Representation
+# Fit very well, significant
+
+sigma <- fit.wb$scale
+alpha <- 1 / sigma
+eta <- -fit.wb$linear.predictors / sigma
+
+r.wb <- ec.data$survival^alpha * exp(eta)
+
+fit.wb1 <- survfit(Surv(r.wb, ec.data$death) ~ 1)
+H.wb <- cumsum(fit.wb1$n.event/fit.wb1$n.risk)
+
+plot(H.wb ~ fit.wb1$time, type = 'l', main = 'Cox-Snell Residual Plot for \n Weibull Regression',
+ylab = 'Estimated Cumulative Hazard', xlab = 'Cox-Snell Residual')
+abline(0, 1, col='red', lty=2)
+
+
+
+getWeibullEstimates(fit.wb)
+
+# Log-Logistic Distribution
+fit.ll <- survreg(Surv(survival, death) ~ ha.age + factor(pe) + factor(wmsi) + factor(fs.cat), 
+                  data = ec.data, dist = "loglogistic")
+summary(fit.ll)
+# NOT significant 
+```
+
+```{r}
+table(ec.data$lvdd.cat)
+table(ec.data$fs.cat)
+table(ec.data$wmsi)
+# fit.p <- coxph(Surv(survival, death) ~ ha.age + factor(pe) + factor(wmsi) + 
+#                  epss + factor(lvdd.cat)+ epss*factor(lvdd.cat), 
+#                data = ec.data2,method='breslow', na.action = na.exclude)
+# summary(fit.p)
+
+
+```
+
+```{r}
+# univariate test and full model
+
+covariates <- c("ha.age", "fs.cat",  "wmsi", "lvdd.cat", "pe")
+univ_formulas <- sapply(covariates,
+                        function(x) as.formula(paste('Surv(survival, death)~', x)))
+                        
+univ_models <- lapply( univ_formulas, function(x){coxph(x, data = ec.data)})
+# Extract data 
+univ_results <- lapply(univ_models,
+                       function(x){ 
+                          x <- summary(x)
+                          p.value<-signif(x$wald["pvalue"], digits=2)
+                          wald.test<-signif(x$wald["test"], digits=2)
+                          beta<-signif(x$coef[1], digits=2);#coeficient beta
+                          HR <-signif(x$coef[2], digits=2);#exp(beta)
+                          HR.confint.lower <- signif(x$conf.int[,"lower .95"], 2)
+                          HR.confint.upper <- signif(x$conf.int[,"upper .95"],2)
+                          HR <- paste0(HR, " (", 
+                                       HR.confint.lower, "-", HR.confint.upper, ")")
+                          res<-c(beta, HR, wald.test, p.value)
+                          names(res)<-c("beta", "HR (95% CI for HR)", "wald.test", 
+                                        "p.value")
+                          return(res)
+                          #return(exp(cbind(coef(x),confint(x))))
+                         })
+res <- t(as.data.frame(univ_results, check.names = FALSE))
+as.data.frame(res)
+
+res.cox <- coxph(Surv(survival, death) ~ ha.age+ fs.cat + wmsi + lvdd.cat + pe , data = ec.data)
+summary(res.cox)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
