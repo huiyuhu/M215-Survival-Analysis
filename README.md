@@ -32,8 +32,8 @@
 * Anderson plots
 
 ## Final Project
+* Dataset: Echocardiogram
 * Objectives and approaches:
-* The objective of this project is to
 1. Explore the distributions of the covariates and correlations between them
 2. Estimate survival function using appropriate variable selection
 3. Compute Kaplan-Meier curves for the full set
