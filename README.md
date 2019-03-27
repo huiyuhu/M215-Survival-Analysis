@@ -30,3 +30,14 @@
 * Martingale residual plot
 * Cox-Snell residual plot
 * Anderson plots
+
+## Final Project
+* Objectives and approaches:
+* The objective of this project is to
+1. Explore the distributions of the covariates and correlations between them
+2. Estimate survival function using appropriate variable selection
+3. Compute Kaplan-Meier curves for the full set
+4. Compare survival function among different pericardial effusion groups.
+5. Find an appropriate model to predict the risk of death using risk factors in dataset.
+6. Fit a Cox’s proportional hazard model to look at the relationship between the patients
+and explanatory variables and deal with any variables with non-proportional hazards
